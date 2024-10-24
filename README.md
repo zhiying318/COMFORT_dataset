@@ -141,3 +141,16 @@ We refer to [Model Wrapper](comfort_utils/model_utils/wrapper.py "wrapper").
     ```bash
     pip install torch==2.0.0+cu118 torchvision==0.15.1+cu118 torchaudio==2.0.1 --index-url https://download.pytorch.org/whl/cu118
     ```
+## Citation :fountain_pen: 
+
+   ```bibtex
+   @misc{zhang2024visionlanguagemodelsrepresentspace,
+          title={Do Vision-Language Models Represent Space and How? Evaluating Spatial Frame of Reference Under Ambiguities}, 
+          author={Zheyuan Zhang and Fengyuan Hu and Jayjun Lee and Freda Shi and Parisa Kordjamshidi and Joyce Chai and Ziqiao Ma},
+          year={2024},
+          eprint={2410.17385},
+          archivePrefix={arXiv},
+          primaryClass={cs.CL},
+          url={https://arxiv.org/abs/2410.17385},
+        }
+   ```
