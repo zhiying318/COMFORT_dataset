@@ -55,7 +55,7 @@ results/eval/*.xlsx
 plots/
 
 # data
-data/
+#data/
 
 # editable package
 __editable__*/

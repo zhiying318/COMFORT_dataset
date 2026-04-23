@@ -1,0 +1,78 @@
+{
+    "variation": "duck__totheright__cam_pov_back__third_sofa_at_behind",
+    "num_steps": 1,
+    "save_path": "../COMFORT/data/comfort_human_car_pov_two",
+    "addressee": false,
+    "addressee_shape": "Sophia",
+    "addressee_position": [
+        0.0,
+        0.0,
+        0.0
+    ],
+    "addressee_size": 0.015,
+    "addressee_rotation": [
+        90,
+        0,
+        270
+    ],
+    "num_distractors": 0,
+    "cam_look_at": [
+        0.0,
+        2.5,
+        0.0
+    ],
+    "object_name": "duck",
+    "ref_shape": "Duck",
+    "ref_color": "unknown",
+    "ref_size": 1.8,
+    "ref_position": [
+        0.0,
+        0.0,
+        0.0
+    ],
+    "ref_rotation": [
+        0,
+        0,
+        0
+    ],
+    "relation": "totheright",
+    "path_type": "cardinal_static",
+    "cardinal_offset": [
+        -2.5,
+        0.0,
+        0.0
+    ],
+    "view_name": "cam_pov_back",
+    "cam_position": [
+        0.0,
+        0.0,
+        1.5
+    ],
+    "cam_lens": 24.0,
+    "sampled_ref_yaw_deg": 208.4108607025958,
+    "third_obj_shape": "Sofa",
+    "third_obj_color": null,
+    "third_obj_size": 1.8,
+    "third_obj_position": [
+        0.0,
+        0.0,
+        0.0
+    ],
+    "third_obj_rotation": [
+        0,
+        0,
+        360
+    ],
+    "third_obj_cardinal_offset": [
+        0.0,
+        2.5,
+        0.0
+    ],
+    "third_obj_yaw_deg": 14.306998424063181,
+    "mapping": {
+        "0.png": "totheright"
+    },
+    "distractor": [],
+    "third_obj_name": "sofa",
+    "third_obj_position_relation": "behind"
+}

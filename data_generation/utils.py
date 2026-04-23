@@ -1,4 +1,4 @@
-
+# utils.py
 import os
 import re
 import sys
@@ -14,6 +14,7 @@ from typing import Union, List
 
 from data_generation.comfort_ball_config import *
 from data_generation.constants import *
+from create_infinity_cove_Ground import create_infinity_cove
 
 
 def get_rotation_path(var_obj, radius, angle_range, num_steps):
@@ -261,6 +262,10 @@ def create_and_setup_object(
             with bpy.data.libraries.load(os.path.join(shape_dir, f"{shape}.blend"), link=False) as (data_from, data_to):
                 data_to.objects = data_from.objects
                 # print("Objects loaded:", data_from.objects, file=sys.stderr)  # Debugging line
+            for o in data_to.objects:
+                if o is not None:
+                    print(f"  [{shape}] Loaded: {o.name} | type={o.type}", file=sys.stderr)
+
             # Link objects to the collection and apply transformations
         # Link objects to the collection
         # Ensure Blender is in object mode
@@ -271,26 +276,40 @@ def create_and_setup_object(
                 if obj is not None:
                     bpy.context.collection.objects.link(obj)
 
-            # Try to join objects
-            try:
-                join_objects(data_to.objects)
-                print("Objects successfully joined.")
-            except RuntimeError as e:
-                print(f"Failed to join objects: {e}")
+            # # Try to join objects
+            # try:
+            #     join_objects(data_to.objects)
+            #     print("Objects successfully joined.")
+            # except RuntimeError as e:
+            #     print(f"Failed to join objects: {e}")
+            #     # ✅ join失败后，手动把第一个object设为active
+            #     if data_to.objects:
+            #         bpy.context.view_layer.objects.active = data_to.objects[0]
+            #         data_to.objects[0].select_set(True)
+            #         print(f"Set {data_to.objects[0].name} as active object after join failure.", file=sys.stderr)
 
-            # Set position and optionally scale
-            if data_to.objects:
-                active_object = bpy.context.active_object
-                bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY', center='BOUNDS')
-                active_object.location = position
-                # active_object.rotation
-                # addressee_obj.rotation_euler = tuple(np.array(addressee_rotation) / 180. * math.pi)
-                # active_object.rotation_euler = tuple(np.array([0, 0, 90]) / 180. * math.pi)
-                # if size:
-                #     # active_object.scale = size
-                #     bpy.ops.object.transform_apply(scale=True)
-            
-            return bpy.context.active_object
+            # 完全不 join，直接找代表物体
+            mesh_objects = [obj for obj in data_to.objects if obj is not None and obj.type == 'MESH']
+            empty_objects = [obj for obj in data_to.objects if obj is not None and obj.type == 'EMPTY' and obj.parent is None]
+
+            if mesh_objects:
+                representative = mesh_objects[0]
+            elif empty_objects:
+                representative = empty_objects[0]
+            else:
+                representative = [obj for obj in data_to.objects if obj is not None][0]
+
+            bpy.context.view_layer.objects.active = representative
+            representative.select_set(True)
+            print(f"Representative object: {representative.name} | type={representative.type}", file=sys.stderr)
+
+            # 不执行 origin_set，直接设 location
+            # 对于有父物体的情况，设在顶层 EMPTY 上
+            root = empty_objects[0] if empty_objects else representative
+            root.location = position
+            print(f"Set location on: {root.name}", file=sys.stderr)
+
+            return root
 
         else:
             print("Creating object", shape, file=sys.stderr)
@@ -516,3 +535,256 @@ def render_scene_config(
             mapping[f'{i}.png'] = int(angle)
         
     return mapping, added_distractors
+
+
+def look_at_object(camera, target_point):
+    """
+    Rotate camera so that it looks at target_point.
+    target_point: tuple(x, y, z)
+    """
+    direction = Vector(target_point) - camera.location
+    rot_quat = direction.to_track_quat('-Z', 'Y')
+    camera.rotation_euler = rot_quat.to_euler()
+
+
+def render_human_cardinal_scene_config(
+    variation: str,
+    relation: str,
+    path_type: str,
+    num_steps: int,
+    save_path: str,
+
+    # object config
+    ref_shape: str,
+    ref_color: tuple,
+    ref_size: float,
+    ref_position: tuple,
+    ref_rotation: tuple,
+
+    # camera
+    cam_position: tuple = None,
+    cam_look_at: tuple = None,
+    cam_lens: float = None,   # focal length in mm; None = keep Blender default (50mm)
+
+    # addressee
+    addressee: bool = False,
+    addressee_shape: str = None,
+    addressee_position: tuple = None,
+    addressee_size: float = None,
+    addressee_rotation: tuple = None,
+
+    # new
+    cardinal_offset: tuple = (0.0, 0.0, 0.0),
+    sampled_ref_yaw_deg: float = None,
+
+    # optional third object at a specific cardinal position
+    third_obj_shape: str = None,
+    third_obj_color: tuple = None,
+    third_obj_size: float = None,
+    third_obj_position: tuple = None,
+    third_obj_rotation: tuple = None,
+    third_obj_cardinal_offset: tuple = (0.0, 0.0, 0.0),
+    third_obj_yaw_deg: float = None,
+
+    # misc
+    distractors: list = None,
+    name: str = None,
+    dataset_name: str = None,
+    render_shadow: bool = True,
+    cuda: bool = False,
+    num_distractors: int = 0,
+    **kwargs
+):
+    """
+    Custom renderer for:
+    - human fixed at center
+    - one object fixed at left/right/front/behind of human
+    - one camera viewpoint per variation
+    """
+
+    bpy.context.scene.render.engine = "CYCLES"
+    bpy.ops.wm.open_mainfile(filepath=BASE_SCENE)
+
+    # see what objects in the scene after loading the base scene, for debugging
+    # for obj in bpy.data.objects:
+    #     print(f"Object in scene: {obj.name} | type: {obj.type}", file=sys.stderr)
+    for obj in bpy.data.objects:
+        # print(f"LIGHT: {obj.name}, type={obj.data.type}, location={obj.location}, energy={obj.data.energy}", file=sys.stderr)
+        if obj.type == 'LIGHT' and obj.data.type == 'SUN': # remove the 侧面光
+            bpy.data.objects.remove(obj, do_unlink=True)
+            continue
+        if obj.type =="LIGHT" and obj.name == 'Lamp_Back':
+            # print(f"LIGHT: {obj.name}, type={obj.data.type}, location={obj.location}, energy={obj.data.energy}", file=sys.stderr)
+            bpy.data.objects[obj.name].data.energy = 50.0 # initially set to 39.27, increase a bit for better lighting; (Keylight ;s energy is 78.54)
+
+    # replace "Ground": build my own infinity cove to have better control over the background and shadows; 
+    create_infinity_cove(size=30.0, wall_height=20.0, curve_radius=5.0, segments=32, base_color=(0.5, 0.5, 0.5, 1.0))
+
+    # OBJECTS_TO_DELETE = ["Ground"]  
+    # for name in OBJECTS_TO_DELETE:
+    #     if name in bpy.data.objects:
+    #         bpy.data.objects.remove(bpy.data.objects[name], do_unlink=True)
+
+    # change default ground color to white
+    # ground = bpy.data.objects.get("Ground")
+    # if ground:
+    #     for slot in ground.material_slots:
+    #         mat = slot.material
+    #         if mat and mat.use_nodes:
+    #             for node in mat.node_tree.nodes:
+    #                 if node.type == 'BSDF_PRINCIPLED':
+    #                     node.inputs["Base Color"].default_value = (0.5, 0.5, 0.5, 1.0)
+    #                 elif node.type == 'BSDF_DIFFUSE':
+    #                     node.inputs["Color"].default_value = (0.5, 0.5, 0.5, 1.0)
+    #                 elif node.type == 'EMISSION':
+    #                     node.inputs["Color"].default_value = (0.5, 0.5, 0.5, 1.0)
+
+
+    # Set world background color the same:
+    world = bpy.context.scene.world
+    world.use_nodes = True
+    bg_node = world.node_tree.nodes.get("Background")
+    if bg_node:
+        bg_node.inputs[0].default_value = (0.5, 0.5, 0.5, 1.0)  # RGBA
+        bg_node.inputs[1].default_value = 1.0  # strength
+
+
+    bpy.context.scene.render.resolution_x = IM_SIZE
+    bpy.context.scene.render.resolution_y = IM_SIZE
+    bpy.context.scene.render.resolution_percentage = 100
+
+    
+    comfort_ball = False
+    camera = bpy.data.objects['Camera']
+
+    if distractors is None:
+        distractors = []
+
+    comfort_ball = False
+
+    camera = bpy.data.objects['Camera']
+    # Clear any constraints (e.g. Track-To targeting origin) so manual look_at works
+    for c in list(camera.constraints):
+        camera.constraints.remove(c)
+
+    if cam_position is not None:
+        camera.location = cam_position
+
+    if cam_look_at is not None:
+        look_at_object(camera, cam_look_at)
+
+    if cam_lens is not None:
+        camera.data.lens = cam_lens
+
+    variation_name = variation
+    SAVE_DIR = os.path.join(save_path, relation, variation_name)
+    os.makedirs(SAVE_DIR, exist_ok=True)
+
+    mapping = {}
+
+    if path_type != "cardinal_static":
+        raise ValueError(f"Unsupported path_type for comfort_human_car: {path_type}")
+
+    # -----------------------------------------------------
+    # addressee object (human)
+    # -----------------------------------------------------
+    if addressee:
+        addressee_obj = create_and_setup_object(
+            SHAPE_DIR,
+            addressee_shape,
+            addressee_size,
+            addressee_position,
+            comfort_ball=comfort_ball
+        )
+
+        if addressee_shape in SPECIAL:
+            # bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY', center='BOUNDS')
+            bpy.context.view_layer.objects.active = addressee_obj
+            addressee_obj.rotation_euler = tuple(np.array(addressee_rotation) / 180. * math.pi)
+            addressee_obj.scale = (addressee_size, addressee_size, addressee_size)
+            bpy.ops.object.transform_apply(scale=True)
+        else:
+            addressee_obj.rotation_euler = tuple(np.array(addressee_rotation) / 180. * math.pi)
+
+    # -----------------------------------------------------
+    # fixed object around human
+    # -----------------------------------------------------
+    base_pos = np.array(ref_position)
+    offset = np.array(cardinal_offset)
+    final_position = tuple((base_pos + offset).tolist())
+
+    ref_obj = create_and_setup_object( # set up ref object
+        SHAPE_DIR,
+        ref_shape,
+        ref_size,
+        final_position,
+        "RefMaterial",
+        ref_color,
+        relation=None,
+        comfort_ball=comfort_ball
+    )
+    # 统一在外部设置 rotation 和 scale（只做一次）
+    bpy.context.view_layer.objects.active = ref_obj
+    ref_obj.location = final_position
+    
+    base_rotation = list(ref_rotation) # randomize yaw, the orientation of object.
+    if sampled_ref_yaw_deg is not None:
+        base_rotation[2] = sampled_ref_yaw_deg # change yaw randomly, which is the rotation around z-axis
+
+    ref_obj.rotation_euler = tuple(np.array(base_rotation) / 180. * math.pi)
+
+    # if ref_shape in SPECIAL:
+    #     bpy.context.view_layer.objects.active = ref_obj
+        
+    if ref_shape == BED:
+        ref_obj.scale = (ref_size, ref_size, ref_size * 0.5)
+    else:
+        ref_obj.scale = (ref_size, ref_size, ref_size)
+
+    bpy.ops.object.transform_apply(rotation=True, scale=True)  # 只 apply 一次
+
+    # -----------------------------------------------------
+    # optional third object at a specific cardinal position
+    # -----------------------------------------------------
+    if third_obj_shape is not None:
+        third_base_pos = np.array(third_obj_position)
+        third_offset = np.array(third_obj_cardinal_offset)
+        third_final_position = tuple((third_base_pos + third_offset).tolist())
+
+        third_obj = create_and_setup_object(
+            SHAPE_DIR,
+            third_obj_shape,
+            third_obj_size,
+            third_final_position,
+            "ThirdObjMaterial",
+            third_obj_color,
+            relation=None,
+            comfort_ball=comfort_ball
+        )
+        bpy.context.view_layer.objects.active = third_obj
+        third_obj.location = third_final_position
+
+        third_base_rotation = list(third_obj_rotation)
+        if third_obj_yaw_deg is not None:
+            third_base_rotation[2] = third_obj_yaw_deg
+
+        third_obj.rotation_euler = tuple(np.array(third_base_rotation) / 180. * math.pi)
+
+        if third_obj_shape == BED:
+            third_obj.scale = (third_obj_size, third_obj_size, third_obj_size * 0.5)
+        else:
+            third_obj.scale = (third_obj_size, third_obj_size, third_obj_size)
+
+        bpy.ops.object.transform_apply(rotation=True, scale=True)
+
+    # -----------------------------------------------------
+    # render single image
+    # -----------------------------------------------------
+    output_image = os.path.join(SAVE_DIR, '0.png')
+    bpy.context.scene.render.filepath = output_image
+    bpy.ops.render.render(write_still=True)
+
+    print(f"Rendered image path: {output_image}", file=sys.stderr)
+    print(f"sampled_ref_yaw_deg: {sampled_ref_yaw_deg}", file=sys.stderr)
+    mapping['0.png'] = relation
+    return mapping, distractors

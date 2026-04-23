@@ -1,0 +1,56 @@
+{
+    "variation": "chair__behind__cam_left",
+    "num_steps": 1,
+    "save_path": "data/comfort_human_car_pov",
+    "addressee": true,
+    "addressee_shape": "Sophia",
+    "addressee_position": [
+        0.0,
+        0.0,
+        0.0
+    ],
+    "addressee_size": 0.015,
+    "addressee_rotation": [
+        90,
+        0,
+        270
+    ],
+    "num_distractors": 0,
+    "cam_look_at": [
+        0.0,
+        0.0,
+        0.0
+    ],
+    "object_name": "chair",
+    "ref_shape": "Chair",
+    "ref_color": "unknown",
+    "ref_size": 1.7,
+    "ref_position": [
+        0.0,
+        0.0,
+        0.0
+    ],
+    "ref_rotation": [
+        0,
+        0,
+        0
+    ],
+    "relation": "behind",
+    "path_type": "cardinal_static",
+    "cardinal_offset": [
+        0.0,
+        2.5,
+        0.0
+    ],
+    "view_name": "cam_left",
+    "cam_position": [
+        10.0,
+        0.0,
+        2.0
+    ],
+    "sampled_ref_yaw_deg": 321.3018101593548,
+    "mapping": {
+        "0.png": "behind"
+    },
+    "distractor": []
+}
